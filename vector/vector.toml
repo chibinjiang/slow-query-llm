@@ -1,0 +1,98 @@
+[sources.mysql_slow_log]
+type = "file"
+include = ["/var/log/mysql/slow.log"]
+read_from = "beginning"
+max_line_bytes = 10485760
+
+[sources.mysql_slow_log.multiline]
+start_pattern = '^# Time:'
+mode = "halt_before"
+condition_pattern = '^# Time:'
+timeout_ms = 1000
+
+[transforms.normalize_mysql]
+type = "remap"
+inputs = ["mysql_slow_log"]
+
+source = '''
+raw = string!(.message)
+
+if contains(raw, "# administrator command:") {
+  abort
+}
+
+query_info = parse_regex!(
+  raw,
+  r'Query_time:\s+(?P<query_time>[\d.]+)\s+Lock_time:\s+(?P<lock_time>[\d.]+)\s+Rows_sent:\s+(?P<rows_sent>\d+)\s+Rows_examined:\s+(?P<rows_examined>\d+)'
+)
+
+sql_info = parse_regex!(
+  raw,
+  r'(?s)SET timestamp=\d+;\s*(?P<sql_text>.*)\s*$'
+)
+
+.db_type = "mysql"
+.db_host = "127.0.0.1"
+.db_name = "unknown"
+.client_ip = ""
+
+.sql_text = strip_whitespace(sql_info.sql_text)
+.total_time_sec = to_float!(query_info.query_time)
+.execution_count = 1
+.avg_time_sec = .total_time_sec
+.max_time_sec = .total_time_sec
+.rows_examined = to_int!(query_info.rows_examined)
+.rows_sent = to_int!(query_info.rows_sent)
+.collected_at = now()
+
+.sql_fingerprint = replace(.sql_text, r'\b\d+\b', "?")
+
+del(.message)
+del(.file)
+del(.host)
+del(.source_type)
+del(.timestamp)
+'''
+
+[sinks.console]
+type = "console"
+inputs = ["normalize_mysql"]
+encoding.codec = "json"
+
+[sinks.clickhouse]
+type = "clickhouse"
+inputs = ["normalize_mysql"]
+endpoint = "http://clickhouse:8123"
+database = "slow_query_db"
+table = "slow_queries"
+format = "json_each_row"
+compression = "none"
+skip_unknown_fields = true
+date_time_best_effort = true
+
+[sinks.clickhouse.encoding]
+only_fields = [
+  "db_type",
+  "db_host",
+  "db_name",
+  "sql_fingerprint",
+  "sql_text",
+  "execution_count",
+  "total_time_sec",
+  "avg_time_sec",
+  "max_time_sec",
+  "rows_examined",
+  "rows_sent",
+  "client_ip",
+  "collected_at"
+]
+timestamp_format = "rfc3339"
+
+[sinks.clickhouse.auth]
+strategy = "basic"
+user = "${CLICKHOUSE_USER}"
+password = "${CLICKHOUSE_PASSWORD}"
+
+[sinks.clickhouse.batch]
+timeout_secs = 5
+max_events = 1000

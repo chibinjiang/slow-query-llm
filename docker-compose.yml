@@ -1,0 +1,72 @@
+version: "1.0"
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: slow-query-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user ${CLICKHOUSE_USER} --password ${CLICKHOUSE_PASSWORD} --query 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: slow-query-clickhouse-init
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./clickhouse/init:/init:ro
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      'clickhouse-client --host clickhouse --user ${CLICKHOUSE_USER} --password ${CLICKHOUSE_PASSWORD}
+      --multiquery --queries-file /init/01_create_tables.sql'
+    restart: "no"
+
+  metabase:
+    build:
+      context: ./metabase
+      dockerfile: Dockerfile
+    container_name: slow-query-metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: h2
+      MB_TIMEZONE: ${MB_TIMEZONE}
+    volumes:
+      - metabase_data:/metabase.db
+    restart: unless-stopped
+    depends_on:
+      clickhouse-init:
+        condition: service_completed_successfully
+
+  vector:
+    image: timberio/vector:nightly-2026-05-23-debian
+    container_name: slow-query-vector
+    depends_on:
+      clickhouse-init:
+        condition: service_completed_successfully
+    command: ["--config", "/etc/vector/vector.toml"]
+    volumes:
+      - ./vector/vector.toml:/etc/vector/vector.toml:ro
+      - ${MYSQL_SLOW_LOG_HOST_PATH}:/var/log/mysql/slow.log:ro
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+  metabase_data:
