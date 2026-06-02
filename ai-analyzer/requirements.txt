@@ -5,3 +5,6 @@ clickhouse-connect
 mysql-connector-python
 pydantic
 python-dotenv
+pytest
+pytest-mock
+pytest-cov

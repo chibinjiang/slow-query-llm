@@ -1,3 +1,6 @@
+"""
+执行: pytest --cov
+"""
 from unittest.mock import Mock
 
 from service.analyzer import SlowQueryAnalyzerService

@@ -4,4 +4,6 @@
 clickhouse_data/
 metabase_data/
 *.log
-**/.env
+ai-analyzer/app/.env
+**/__pycache__/
+__pycache__/
