@@ -1,7 +1,13 @@
 from unittest.mock import Mock
-
+import sys
 import pytest
-
+from pathlib import Path
+# 当前文件: app/tests/conftest.py
+# 目标: 把 app/ 目录加入 Python 模块搜索路径
+APP_DIR = Path(__file__).resolve().parents[1]
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+print(APP_DIR, sys.path)
 from schemas import SlowQueryCandidate, AIAnalysisResult
 
 
