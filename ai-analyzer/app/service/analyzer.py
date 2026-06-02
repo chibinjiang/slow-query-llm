@@ -1,11 +1,14 @@
 # app/analyzer.py
 from __future__ import annotations
+import logging
 
 from dataclasses import dataclass
 
 from database.ch import ClickHouseRepo
 from database.mysql import explain_sql
 from gateway.chatgpt_client import OpenAIAnalyzer
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -69,6 +72,10 @@ class SlowQueryAnalyzerService:
             except Exception:
                 # 这里先做最小化容错。
                 # 后续你可以改成日志记录、重试、死信队列等。
+                logger.exception(
+                    "analyze failed: %s",
+                    candidate.sql_fingerprint
+                )
                 failed += 1
 
         return RunSummary(
