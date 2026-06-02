@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 # 以当前文件所在目录向上推一层，作为项目根目录。
 # 这样无论你在本地跑，还是在 Docker 容器里跑，都能稳定找到 .env。
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 ENV_FILE = BASE_DIR / ".env"
 
 # 读取 .env 文件中的变量。
