@@ -4,3 +4,4 @@
 clickhouse_data/
 metabase_data/
 *.log
+**/.env
