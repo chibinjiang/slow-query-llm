@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .clickhouse_repo import ClickHouseRepo
-from .mysql_explain import explain_sql
-from .openai_client import OpenAIAnalyzer
+from database.ch import ClickHouseRepo
+from database.mysql import explain_sql
+from gateway.chatgpt_client import OpenAIAnalyzer
 
 
 @dataclass

@@ -1,12 +1,10 @@
 # app/openai_client.py
 from __future__ import annotations
-
 import json
-
 from openai import OpenAI
 
-from .config import settings
-from .schemas import AIAnalysisResult, SlowQueryCandidate
+from config import settings
+from schemas import AIAnalysisResult, SlowQueryCandidate
 
 # 约束模型输出结构。
 # 这样做的好处是：返回结果可以直接落库，不用再写一层复杂的文本解析。

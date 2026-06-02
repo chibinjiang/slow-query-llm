@@ -7,8 +7,8 @@ from typing import Any
 
 import clickhouse_connect
 
-from .config import settings
-from .schemas import AIAnalysisResult, SlowQueryCandidate
+from config import settings
+from schemas import AIAnalysisResult, SlowQueryCandidate
 
 
 class ClickHouseRepo:

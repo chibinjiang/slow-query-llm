@@ -4,8 +4,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-from .analyzer import SlowQueryAnalyzerService
-from .clickhouse_repo import ClickHouseRepo
+from service.analyzer import SlowQueryAnalyzerService
+from database.ch import ClickHouseRepo
 
 app = FastAPI(title="Slow Query AI Analyzer", version="0.1.0")
 

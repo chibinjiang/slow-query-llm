@@ -5,7 +5,7 @@ import json
 
 import mysql.connector
 
-from .config import settings
+from config import settings
 
 
 def explain_sql(sample_sql: str, db_name: str) -> str:
