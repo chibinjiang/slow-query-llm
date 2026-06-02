@@ -96,13 +96,13 @@ class OpenAIAnalyzer:
             model=settings.openai_model,
             instructions="你是一个严格的 SQL 性能分析器。必须按 JSON Schema 返回结果。",
             input=prompt,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
+            text={
+                "format": {
+                    "type": "json_schema",
                     "name": "slow_query_analysis",
-                    "strict": True,
                     "schema": SCHEMA,
-                },
+                    "strict": True,
+                }
             },
         )
 
