@@ -60,14 +60,6 @@ def analysis_detail(db_type: str, db_name: str, sql_fingerprint: str):
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(limit: int = 20):
-    """
-    一个极简网页，直接展示 AI 分析结果。
-
-    这个页面主要用于：
-    - 本地开发调试
-    - 给开源项目做演示
-    - 验证数据链路是否闭环
-    """
     items = repo.list_latest_analyses(limit=limit)
 
     cards = []
@@ -121,6 +113,30 @@ def dashboard(limit: int = 20):
           margin-bottom: 20px;
         }}
         h1 {{ margin: 0 0 8px 0; }}
+        .actions {{
+          margin-top: 12px;
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          align-items: center;
+        }}
+        .btn {{
+          border: 0;
+          border-radius: 999px;
+          padding: 10px 16px;
+          cursor: pointer;
+          font-weight: 600;
+          background: #2563eb;
+          color: white;
+        }}
+        .btn:disabled {{
+          opacity: 0.6;
+          cursor: not-allowed;
+        }}
+        .status {{
+          font-size: 14px;
+          color: #475569;
+        }}
         .grid {{
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
@@ -185,18 +201,51 @@ def dashboard(limit: int = 20):
         <div class="hero">
           <h1>Slow Query AI Dashboard</h1>
           <div>ClickHouse 中的慢查询，已经被 OpenAI 分析成可读、可落库、可展示的结果。</div>
-          <div style="margin-top:10px;">
+          <div class="actions">
             <a href="/docs">API Docs</a>
             &nbsp;|&nbsp;
-            <a href="/run-once">Run job</a>
-            &nbsp;|&nbsp;
             <a href="/analyses">JSON data</a>
+            <button class="btn" id="runBtn">Run job</button>
+            <span class="status" id="runStatus"></span>
           </div>
         </div>
         <div class="grid">
-          {''.join(cards) if cards else '<div>暂无分析结果。先访问 /run-once 生成一批。</div>'}
+          {''.join(cards) if cards else '<div>暂无分析结果。先点击 Run job 生成一批。</div>'}
         </div>
       </div>
+
+      <script>
+        const runBtn = document.getElementById("runBtn");
+        const runStatus = document.getElementById("runStatus");
+
+        runBtn.addEventListener("click", async () => {{
+          runBtn.disabled = true;
+          runStatus.textContent = "正在分析中...";
+
+          try {{
+            const resp = await fetch("/run-once?days=7&limit=20", {{
+              method: "POST",
+              headers: {{
+                "Content-Type": "application/json"
+              }}
+            }});
+
+            if (!resp.ok) {{
+              throw new Error(`HTTP ${{resp.status}}`);
+            }}
+
+            const data = await resp.json();
+            runStatus.textContent = `完成：scanned=${{data.scanned}}, analyzed=${{data.analyzed}}, skipped=${{data.skipped}}, failed=${{data.failed}}`;
+
+            // 刷新页面，显示最新分析结果
+            setTimeout(() => window.location.reload(), 1200);
+          }} catch (err) {{
+            runStatus.textContent = "执行失败：" + err.message;
+          }} finally {{
+            runBtn.disabled = false;
+          }}
+        }});
+      </script>
     </body>
     </html>
     """
