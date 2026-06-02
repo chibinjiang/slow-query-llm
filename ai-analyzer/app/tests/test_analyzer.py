@@ -26,7 +26,7 @@ def test_run_once_success(
     service.repo.get_recently_analyzed_keys.return_value = set()
 
     mocker.patch(
-        "app.analyzer.explain_sql",
+        "service.analyzer.explain_sql",
         return_value='{"query_block":{}}'
     )
 
@@ -96,7 +96,7 @@ def test_run_once_openai_exception(
     service.repo.get_recently_analyzed_keys.return_value = set()
 
     mocker.patch(
-        "app.analyzer.explain_sql",
+        "service.analyzer.explain_sql",
         return_value="{}",
     )
 
@@ -130,7 +130,7 @@ def test_run_once_insert_failed(
     service.repo.get_recently_analyzed_keys.return_value = set()
 
     mocker.patch(
-        "app.analyzer.explain_sql",
+        "service.analyzer.explain_sql",
         return_value="{}",
     )
 
