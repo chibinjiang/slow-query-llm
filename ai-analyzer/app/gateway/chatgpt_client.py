@@ -84,7 +84,10 @@ class OpenAIAnalyzer:
         if not settings.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY is missing")
 
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.client = OpenAI(
+            base_url=settings.openai_base_url,
+            api_key=settings.openai_api_key,
+        )
 
     def analyze(self, candidate: SlowQueryCandidate, explain_json: str = "") -> AIAnalysisResult:
         """
