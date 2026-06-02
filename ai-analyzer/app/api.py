@@ -1,11 +1,15 @@
 # app/api.py
 from __future__ import annotations
 
+import logging
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from config.logging_config import setup_logging
 from service.analyzer import SlowQueryAnalyzerService
 from database.ch import ClickHouseRepo
+
+setup_logging(logging.INFO)
 
 app = FastAPI(title="Slow Query AI Analyzer", version="0.1.0")
 

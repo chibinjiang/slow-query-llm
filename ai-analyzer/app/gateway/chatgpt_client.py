@@ -1,11 +1,14 @@
 # app/gateway/chatgpt_client.py
 from __future__ import annotations
+import logging
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import settings
 from schemas import AIAnalysisResult, SlowQueryCandidate, SlowQueryAnalysisLLMOutput
+
+logger = logging.getLogger(__name__)
 
 
 def build_prompt(candidate: SlowQueryCandidate, explain_json: str) -> str:
@@ -80,7 +83,7 @@ class OpenAIAnalyzer:
         调用模型完成分析，并映射成项目内统一的结果对象。
         """
         prompt = build_prompt(candidate, explain_json)
-        print(f"提示词: {prompt}")
+        logger.info(f"提示词: {prompt}")
         # LangChain 的模型调用使用 invoke()
         result: SlowQueryAnalysisLLMOutput = self.structured_llm.invoke(
             [
