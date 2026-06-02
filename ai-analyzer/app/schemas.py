@@ -1,5 +1,5 @@
 # app/schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SlowQueryCandidate(BaseModel):
@@ -44,3 +44,19 @@ class AIAnalysisResult(BaseModel):
     explain_json: str = ""
     model_name: str = ""
     prompt_version: str = ""
+
+
+class SlowQueryAnalysisLLMOutput(BaseModel):
+    """
+    LLM 直接返回的结构化结果。
+
+    这个模型只描述模型输出本身，
+    最终再映射成你自己的 AIAnalysisResult。
+    """
+    risk_level: str = Field(description="LOW / MEDIUM / HIGH / CRITICAL")
+    summary: str
+    root_cause: str
+    optimization_suggestion: str
+    optimized_sql: str
+    index_suggestion: str
+    estimated_improvement: str
