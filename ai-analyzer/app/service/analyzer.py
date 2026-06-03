@@ -63,7 +63,7 @@ class SlowQueryAnalyzerService:
                 ex_json = explain_sql(candidate.sample_sql, candidate.db_name)
 
                 # 调用大模型生成结构化建议。
-                result = self.llm.analyze(candidate, explain_json=ex_json)
+                result = self.llm.analyze_mysql(candidate, explain_json=ex_json)
 
                 # 回写 ClickHouse，供 Metabase 和 API 查询。
                 self.repo.insert_analysis(result)

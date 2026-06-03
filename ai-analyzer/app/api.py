@@ -6,8 +6,11 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from config.logging_config import setup_logging
-from service.analyzer import SlowQueryAnalyzerService
 from database.ch import ClickHouseRepo
+from service.analyzer import SlowQueryAnalyzerService
+from service.mongo_collector import MongoProfileCollectorService
+from service.mongo_analyzer import MongoSlowQueryAnalyzerService
+
 
 setup_logging(logging.INFO)
 
@@ -15,6 +18,9 @@ app = FastAPI(title="Slow Query AI Analyzer", version="0.1.0")
 
 repo = ClickHouseRepo()
 service = SlowQueryAnalyzerService()
+mongo_collector = MongoProfileCollectorService()
+mongo_analyzer = MongoSlowQueryAnalyzerService()
+
 
 
 @app.get("/health")
@@ -60,6 +66,16 @@ def analysis_detail(db_type: str, db_name: str, sql_fingerprint: str):
         sql_fingerprint=sql_fingerprint,
     )
     return {"items": rows}
+
+
+@app.post("/mongo/collect-once")
+def mongo_collect_once():
+    return mongo_collector.run_once()
+
+
+@app.post("/mongo/analyze-once")
+def mongo_analyze_once(days: int = 7, limit: int = 20):
+    return mongo_analyzer.run_once(days=days, limit=limit)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

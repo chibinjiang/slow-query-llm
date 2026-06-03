@@ -6,7 +6,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from config import settings
-from schemas import AIAnalysisResult, SlowQueryCandidate, SlowQueryAnalysisLLMOutput
+from schemas.mysql import AIAnalysisResult, SlowQueryCandidate, SlowQueryAnalysisLLMOutput
+from schemas.mongodb import MongoAnalysisLLMOutput, MongoAnalysisResult, MongoProfileCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +70,19 @@ class OpenAIAnalyzer:
 
         # 让模型直接返回符合 Pydantic schema 的结构化结果。
         # 对 OpenAI 来说，method="json_schema" 会使用原生结构化输出能力。
-        self.structured_llm = self.llm.with_structured_output(
+        self.mysql_chain = self.llm.with_structured_output(
             SlowQueryAnalysisLLMOutput,
             method="json_schema",
         )
+        self.mongo_chain = self.llm.with_structured_output(
+            MongoAnalysisLLMOutput,
+            method="json_schema",
+        )
 
-    def analyze(
-        self,
-        candidate: SlowQueryCandidate,
-        explain_json: str = "",
+    def analyze_mysql(
+            self,
+            candidate: SlowQueryCandidate,
+            explain_json: str = "",
     ) -> AIAnalysisResult:
         """
         调用模型完成分析，并映射成项目内统一的结果对象。
@@ -85,7 +90,7 @@ class OpenAIAnalyzer:
         prompt = build_prompt(candidate, explain_json)
         logger.info(f"提示词: {prompt}")
         # LangChain 的模型调用使用 invoke()
-        result: SlowQueryAnalysisLLMOutput = self.structured_llm.invoke(
+        result: SlowQueryAnalysisLLMOutput = self.mysql_chain.invoke(
             [
                 SystemMessage(
                     content="你是一个严格的 SQL 性能分析器，必须输出适合数据库落库的结构化结果。"
@@ -111,5 +116,78 @@ class OpenAIAnalyzer:
             estimated_improvement=result.estimated_improvement,
             explain_json=explain_json or "",
             model_name="gpt-4.1-mini",
+            prompt_version=settings.openai_prompt_version,
+        )
+
+    def analyze_mongo(
+            self,
+            candidate: MongoProfileCandidate,
+            explain_json: str = "",
+    ) -> MongoAnalysisResult:
+        prompt = f"""
+    你是一名资深 MongoDB DBA。
+
+    请分析下面这条慢操作，并返回结构化结果。
+    要求：
+    1. 只输出 JSON，不要输出多余文本
+    2. 优先分析索引、docsExamined、keysExamined、sort、projection、pipeline
+    3. optimized_query 可以是改写后的 find / aggregate / update 语句
+    4. 不要编造不存在的字段
+
+    MongoDB 操作：
+    - db_name: {candidate.db_name}
+    - collection_name: {candidate.collection_name}
+    - operation_type: {candidate.operation_type}
+    - millis: {candidate.millis}
+    - docs_examined: {candidate.docs_examined}
+    - keys_examined: {candidate.keys_examined}
+    - n_returned: {candidate.n_returned}
+    - plan_summary: {candidate.plan_summary}
+
+    query_filter:
+    {candidate.query_filter}
+
+    sort:
+    {candidate.sort_json}
+
+    projection:
+    {candidate.projection_json}
+
+    pipeline:
+    {candidate.pipeline_json}
+
+    explain:
+    {explain_json if explain_json else "EMPTY"}
+    """.strip()
+
+        result: MongoAnalysisLLMOutput = self.mongo_chain.invoke(
+            [
+                SystemMessage(content="你是一个严格的 MongoDB 性能分析器。"),
+                HumanMessage(content=prompt),
+            ]
+        )
+
+        return MongoAnalysisResult(
+            db_type="mongodb",
+            db_name=candidate.db_name,
+            collection_name=candidate.collection_name,
+            namespace=candidate.namespace,
+            operation_type=candidate.operation_type,
+            fingerprint=candidate.fingerprint,
+            sample_query=candidate.query_filter or candidate.pipeline_json or candidate.raw_profile_json,
+            millis=candidate.millis,
+            docs_examined=candidate.docs_examined,
+            keys_examined=candidate.keys_examined,
+            n_returned=candidate.n_returned,
+            plan_summary=candidate.plan_summary,
+            risk_level=result.risk_level,
+            summary=result.summary,
+            root_cause=result.root_cause,
+            optimization_suggestion=result.optimization_suggestion,
+            optimized_query=result.optimized_query,
+            index_suggestion=result.index_suggestion,
+            estimated_improvement=result.estimated_improvement,
+            explain_json=explain_json or "",
+            model_name=settings.openai_model,
             prompt_version=settings.openai_prompt_version,
         )

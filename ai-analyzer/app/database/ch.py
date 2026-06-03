@@ -8,8 +8,8 @@ from typing import Any
 import clickhouse_connect
 
 from config import settings
-from schemas import AIAnalysisResult, SlowQueryCandidate
-
+from schemas.mysql import AIAnalysisResult, SlowQueryCandidate
+from schemas.mongodb import MongoProfileCandidate
 
 class ClickHouseRepo:
     """
@@ -213,3 +213,174 @@ class ClickHouseRepo:
             },
         )
         return result.result_rows
+
+    # ----------------------------
+    # MongoDB raw profile events
+    # ----------------------------
+    def insert_mongo_profile_events(self, items: list[MongoProfileCandidate]) -> None:
+        if not items:
+            return
+
+        rows = []
+        for item in items:
+            rows.append([
+                item.db_name,
+                item.collection_name,
+                item.namespace,
+                item.operation_type,
+                item.query_hash,
+                item.fingerprint,
+                item.millis,
+                item.docs_examined,
+                item.keys_examined,
+                item.n_returned,
+                item.plan_summary,
+                item.query_filter,
+                item.sort_json,
+                item.projection_json,
+                item.pipeline_json,
+                item.ts,
+                item.raw_profile_json,
+            ])
+
+        self.client.insert(
+            f"{settings.clickhouse_db}.mongo_profile_events",
+            rows,
+            column_names=[
+                "db_name",
+                "collection_name",
+                "namespace",
+                "operation_type",
+                "query_hash",
+                "fingerprint",
+                "millis",
+                "docs_examined",
+                "keys_examined",
+                "n_returned",
+                "plan_summary",
+                "query_filter",
+                "sort_json",
+                "projection_json",
+                "pipeline_json",
+                "ts",
+                "raw_profile_json",
+            ],
+        )
+
+    def get_mongo_candidates(self, days: int = 7, limit: int = 20) -> list[MongoProfileCandidate]:
+        sql = f"""
+        SELECT
+            db_name,
+            collection_name,
+            namespace,
+            operation_type,
+            query_hash,
+            fingerprint,
+            max(millis) AS millis,
+            sum(docs_examined) AS docs_examined,
+            sum(keys_examined) AS keys_examined,
+            sum(n_returned) AS n_returned,
+            any(plan_summary) AS plan_summary,
+            any(query_filter) AS query_filter,
+            any(sort_json) AS sort_json,
+            any(projection_json) AS projection_json,
+            any(pipeline_json) AS pipeline_json,
+            max(ts) AS ts,
+            any(raw_profile_json) AS raw_profile_json
+        FROM {settings.clickhouse_db}.mongo_profile_events
+        WHERE ts >= now() - INTERVAL {days} DAY
+        GROUP BY
+            db_name, collection_name, namespace, operation_type, query_hash, fingerprint
+        ORDER BY sum(millis) DESC
+        LIMIT {limit}
+        """
+        rows = self.client.query(sql).result_rows
+        return [
+            MongoProfileCandidate(
+                db_type="mongodb",
+                db_name=row[0],
+                collection_name=row[1],
+                namespace=row[2],
+                operation_type=row[3],
+                query_hash=row[4] or "",
+                fingerprint=row[5] or "",
+                millis=int(row[6] or 0),
+                docs_examined=int(row[7] or 0),
+                keys_examined=int(row[8] or 0),
+                n_returned=int(row[9] or 0),
+                plan_summary=row[10] or "",
+                query_filter=row[11] or "",
+                sort_json=row[12] or "",
+                projection_json=row[13] or "",
+                pipeline_json=row[14] or "",
+                ts=str(row[15] or ""),
+                raw_profile_json=row[16] or "",
+            )
+            for row in rows
+        ]
+
+    # ----------------------------
+    # MongoDB analysis table
+    # ----------------------------
+    def insert_mongo_analysis(self, item: MongoAnalysisResult) -> None:
+        self.client.insert(
+            f"{settings.clickhouse_db}.mongo_ai_analysis",
+            [[
+                item.db_type,
+                item.db_name,
+                item.collection_name,
+                item.namespace,
+                item.operation_type,
+                item.fingerprint,
+                item.sample_query,
+                item.millis,
+                item.docs_examined,
+                item.keys_examined,
+                item.n_returned,
+                item.plan_summary,
+                item.risk_level,
+                item.summary,
+                item.root_cause,
+                item.optimization_suggestion,
+                item.optimized_query,
+                item.index_suggestion,
+                item.estimated_improvement,
+                item.explain_json,
+                item.model_name,
+                item.prompt_version,
+            ]],
+            column_names=[
+                "db_type",
+                "db_name",
+                "collection_name",
+                "namespace",
+                "operation_type",
+                "fingerprint",
+                "sample_query",
+                "millis",
+                "docs_examined",
+                "keys_examined",
+                "n_returned",
+                "plan_summary",
+                "risk_level",
+                "summary",
+                "root_cause",
+                "optimization_suggestion",
+                "optimized_query",
+                "index_suggestion",
+                "estimated_improvement",
+                "explain_json",
+                "model_name",
+                "prompt_version",
+            ],
+        )
+
+    def get_recently_analyzed_mongo_keys(self, days: int = 7) -> set[tuple[str, str, str]]:
+        sql = f"""
+        SELECT db_name, collection_name, fingerprint
+        FROM {settings.clickhouse_db}.mongo_ai_analysis
+        WHERE analyzed_at >= now() - INTERVAL {days} DAY
+        GROUP BY db_name, collection_name, fingerprint
+        """
+        rows = self.client.query(sql).result_rows
+        return {(r[0], r[1], r[2]) for r in rows}

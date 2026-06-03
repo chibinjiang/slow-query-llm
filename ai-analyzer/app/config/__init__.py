@@ -61,5 +61,12 @@ class Settings:
     mysql_user: str = os.getenv("MYSQL_USER", "root")
     mysql_password: str = os.getenv("MYSQL_PASSWORD", "")
 
+    # Mongodb
+    enable_mongodb_explain: bool = _env_bool("ENABLE_MONGODB_EXPLAIN", "true")
+    mongodb_uri: str = os.getenv("MONGODB_URI", "")
+    mongodb_databases: str = os.getenv("MONGODB_DATABASES", "")
+    # 采集进度记录文件，用来保存上一次已经处理到的 system.profile 时间点
+    mongodb_watermark_file: str = os.getenv("MONGODB_WATERMARK_FILE", "")
+
 
 settings = Settings()

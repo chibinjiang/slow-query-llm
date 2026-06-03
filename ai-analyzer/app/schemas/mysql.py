@@ -1,4 +1,4 @@
-# app/schemas.py
+# app/mysql.py
 from pydantic import BaseModel, Field
 
 
