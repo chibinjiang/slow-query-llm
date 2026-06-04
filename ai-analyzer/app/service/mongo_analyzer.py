@@ -1,7 +1,6 @@
 # service/mongo_analyzer.py
 from __future__ import annotations
 
-import json
 import logging
 
 from database.ch import ClickHouseRepo

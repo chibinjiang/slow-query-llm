@@ -5,7 +5,6 @@ import logging
 
 from database.mongodb import MongoRepo
 from database.ch import ClickHouseRepo
-from schemas.mongodb import MongoProfileCandidate
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,8 @@ import clickhouse_connect
 
 from config import settings
 from schemas.mysql import AIAnalysisResult, SlowQueryCandidate
-from schemas.mongodb import MongoProfileCandidate
+from schemas.mongodb import MongoProfileCandidate, MongoAnalysisResult
+
 
 class ClickHouseRepo:
     """
@@ -134,7 +135,7 @@ class ClickHouseRepo:
             ],
         )
 
-    def list_latest_analyses(self, limit: int = 20) -> list[dict[str, Any]]:
+    def list_latest_mysql_analyses(self, limit: int = 20) -> list[dict[str, Any]]:
         """
         给前端页面使用，返回最新的分析摘要。
         """
@@ -384,3 +385,49 @@ class ClickHouseRepo:
         """
         rows = self.client.query(sql).result_rows
         return {(r[0], r[1], r[2]) for r in rows}
+
+    def list_latest_mongo_analyses(self, limit: int = 20) -> list[dict[str, Any]]:
+        """
+        查询最近的 MongoDB AI 分析结果。
+        """
+        sql = f"""
+        SELECT
+            db_type,
+            db_name,
+            collection_name,
+            namespace,
+            operation_type,
+            fingerprint,
+            sample_query,
+            any(risk_level) AS risk_level,
+            any(summary) AS summary,
+            any(root_cause) AS root_cause,
+            any(optimization_suggestion) AS optimization_suggestion,
+            any(optimized_query) AS optimized_query,
+            any(index_suggestion) AS index_suggestion,
+            any(estimated_improvement) AS estimated_improvement,
+            max(analyzed_at) AS analyzed_at
+        FROM {settings.clickhouse_db}.mongo_ai_analysis
+        GROUP BY db_type, db_name, collection_name, namespace, operation_type, fingerprint, sample_query
+        ORDER BY analyzed_at DESC
+        LIMIT {limit}
+        """
+        cols = [
+            "db_type",
+            "db_name",
+            "collection_name",
+            "namespace",
+            "operation_type",
+            "fingerprint",
+            "sample_query",
+            "risk_level",
+            "summary",
+            "root_cause",
+            "optimization_suggestion",
+            "optimized_query",
+            "index_suggestion",
+            "estimated_improvement",
+            "analyzed_at",
+        ]
+        rows = self.client.query(sql).result_rows
+        return [dict(zip(cols, row)) for row in rows]

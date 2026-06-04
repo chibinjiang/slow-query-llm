@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 
 from config.logging_config import setup_logging
@@ -16,8 +16,8 @@ setup_logging(logging.INFO)
 
 app = FastAPI(title="Slow Query AI Analyzer", version="0.1.0")
 
-repo = ClickHouseRepo()
-service = SlowQueryAnalyzerService()
+ch_repo = ClickHouseRepo()
+mysql_service = SlowQueryAnalyzerService()
 mongo_collector = MongoProfileCollectorService()
 mongo_analyzer = MongoSlowQueryAnalyzerService()
 
@@ -31,28 +31,12 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/run-once")
-def run_once(days: int = 7, limit: int = 20):
-    """
-    手动触发一次慢查询分析。
-
-    适合本地测试，或者后面接入 cron / 定时任务。
-    """
-    summary = service.run_once(days=days, limit=limit)
-    return {
-        "scanned": summary.scanned,
-        "analyzed": summary.analyzed,
-        "skipped": summary.skipped,
-        "failed": summary.failed,
-    }
-
-
 @app.get("/analyses")
 def latest_analyses(limit: int = 20):
     """
     返回最新的 AI 分析摘要，供前端或 Metabase 查询。
     """
-    return {"items": repo.list_latest_analyses(limit=limit)}
+    return {"items": ch_repo.list_latest_mysql_analyses(limit=limit)}
 
 
 @app.get("/analysis/{db_type}/{db_name}/{sql_fingerprint}")
@@ -60,7 +44,7 @@ def analysis_detail(db_type: str, db_name: str, sql_fingerprint: str):
     """
     返回某个 SQL 指纹的详细分析记录。
     """
-    rows = repo.get_analysis_detail(
+    rows = ch_repo.get_analysis_detail(
         db_type=db_type,
         db_name=db_name,
         sql_fingerprint=sql_fingerprint,
@@ -78,18 +62,51 @@ def mongo_analyze_once(days: int = 7, limit: int = 20):
     return mongo_analyzer.run_once(days=days, limit=limit)
 
 
+@app.get("/analyses")
+def analyses(limit: int = 20):
+    return {
+        "mysql": ch_repo.list_latest_mysql_analyses(limit=limit),
+        "mongodb": ch_repo.list_latest_mongo_analyses(limit=limit),
+    }
+
+
+@app.post("/run-once")
+def run_once(
+    db_type: str = Query(..., description="mysql or mongodb"),
+    days: int = 7,
+    limit: int = 20,
+):
+    db_type = db_type.lower().strip()
+
+    if db_type == "mysql":
+        result = mysql_service.run_once(days=days, limit=limit)
+        return {"db_type": "mysql", "result": result}
+
+    if db_type == "mongodb":
+        collect_result = mongo_collector.run_once()
+        analyze_result = mongo_analyzer.run_once(days=days, limit=limit)
+        return {
+            "db_type": "mongodb",
+            "collect_result": collect_result,
+            "analyze_result": analyze_result,
+        }
+
+    return {"error": f"unsupported db_type: {db_type}"}
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(limit: int = 20):
-    items = repo.list_latest_analyses(limit=limit)
+    mysql_items = ch_repo.list_latest_mysql_analyses(limit=limit)
+    mongo_items = ch_repo.list_latest_mongo_analyses(limit=limit)
 
-    cards = []
-    for item in items:
-        cards.append(f"""
+    mysql_cards = []
+    for item in mysql_items:
+        mysql_cards.append(f"""
         <div class="card">
           <div class="card-head">
             <div>
               <div class="title">{item["db_name"]}</div>
-              <div class="sub">{item["db_type"]} · {item["sql_fingerprint"]}</div>
+              <div class="sub">MySQL · {item["sql_fingerprint"]}</div>
             </div>
             <span class="badge {item["risk_level"].lower()}">{item["risk_level"]}</span>
           </div>
@@ -102,6 +119,30 @@ def dashboard(limit: int = 20):
           <details>
             <summary>优化后的 SQL</summary>
             <pre class="sql">{item["optimized_sql"]}</pre>
+          </details>
+        </div>
+        """)
+
+    mongo_cards = []
+    for item in mongo_items:
+        mongo_cards.append(f"""
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <div class="title">{item["db_name"]}.{item["collection_name"]}</div>
+              <div class="sub">MongoDB · {item["operation_type"]} · {item["fingerprint"]}</div>
+            </div>
+            <span class="badge {item["risk_level"].lower()}">{item["risk_level"]}</span>
+          </div>
+          <pre class="sql">{item["sample_query"]}</pre>
+          <div class="metric">总结：{item["summary"]}</div>
+          <div class="metric">根因：{item["root_cause"]}</div>
+          <div class="metric">建议：{item["optimization_suggestion"]}</div>
+          <div class="metric">索引：{item["index_suggestion"]}</div>
+          <div class="metric">预估收益：{item["estimated_improvement"]}</div>
+          <details>
+            <summary>优化后的查询</summary>
+            <pre class="sql">{item["optimized_query"]}</pre>
           </details>
         </div>
         """)
@@ -121,7 +162,7 @@ def dashboard(limit: int = 20):
           color: #0f172a;
         }}
         .wrap {{
-          max-width: 1200px;
+          max-width: 1280px;
           margin: 0 auto;
           padding: 28px;
         }}
@@ -149,6 +190,9 @@ def dashboard(limit: int = 20):
           background: #2563eb;
           color: white;
         }}
+        .btn.secondary {{
+          background: #7c3aed;
+        }}
         .btn:disabled {{
           opacity: 0.6;
           cursor: not-allowed;
@@ -157,9 +201,17 @@ def dashboard(limit: int = 20):
           font-size: 14px;
           color: #475569;
         }}
+        .section {{
+          margin-top: 22px;
+        }}
+        .section-title {{
+          font-size: 20px;
+          font-weight: 700;
+          margin: 0 0 12px 0;
+        }}
         .grid {{
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
           gap: 16px;
         }}
         .card {{
@@ -210,40 +262,51 @@ def dashboard(limit: int = 20):
           cursor: pointer;
           font-weight: 600;
         }}
-        a {{
-          color: #2563eb;
-          text-decoration: none;
-        }}
       </style>
     </head>
     <body>
       <div class="wrap">
         <div class="hero">
           <h1>Slow Query AI Dashboard</h1>
-          <div>ClickHouse 中的慢查询，已经被 OpenAI 分析成可读、可落库、可展示的结果。</div>
+          <div>统一查看 MySQL 和 MongoDB 的慢查询分析结果。</div>
           <div class="actions">
             <a href="/docs">API Docs</a>
-            &nbsp;|&nbsp;
-            <a href="/analyses">JSON data</a>
-            <button class="btn" id="runBtn">Run job</button>
+            <a href="/analyses" style="margin-left:8px;">JSON data</a>
+            <button class="btn" id="runMysqlBtn">Run MySQL</button>
+            <button class="btn secondary" id="runMongoBtn">Run MongoDB</button>
             <span class="status" id="runStatus"></span>
           </div>
         </div>
-        <div class="grid">
-          {''.join(cards) if cards else '<div>暂无分析结果。先点击 Run job 生成一批。</div>'}
+
+        <div class="section">
+          <div class="section-title">MySQL 分析结果</div>
+          <div class="grid">
+            {''.join(mysql_cards) if mysql_cards else '<div>暂无 MySQL 分析结果。点击 Run MySQL 生成一批。</div>'}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">MongoDB 分析结果</div>
+          <div class="grid">
+            {''.join(mongo_cards) if mongo_cards else '<div>暂无 MongoDB 分析结果。点击 Run MongoDB 生成一批。</div>'}
+          </div>
         </div>
       </div>
 
       <script>
-        const runBtn = document.getElementById("runBtn");
         const runStatus = document.getElementById("runStatus");
+        const runMysqlBtn = document.getElementById("runMysqlBtn");
+        const runMongoBtn = document.getElementById("runMongoBtn");
 
-        runBtn.addEventListener("click", async () => {{
-          runBtn.disabled = true;
-          runStatus.textContent = "正在分析中...";
+        async function runJob(dbType) {{
+          runMysqlBtn.disabled = true;
+          runMongoBtn.disabled = true;
+          runStatus.textContent = dbType === "mysql"
+            ? "正在执行 MySQL 分析..."
+            : "正在执行 MongoDB 采集与分析...";
 
           try {{
-            const resp = await fetch("/run-once?days=7&limit=20", {{
+            const resp = await fetch(`/run-once?db_type=${{dbType}}&days=7&limit=20`, {{
               method: "POST",
               headers: {{
                 "Content-Type": "application/json"
@@ -255,16 +318,27 @@ def dashboard(limit: int = 20):
             }}
 
             const data = await resp.json();
-            runStatus.textContent = `完成：scanned=${{data.scanned}}, analyzed=${{data.analyzed}}, skipped=${{data.skipped}}, failed=${{data.failed}}`;
 
-            // 刷新页面，显示最新分析结果
+            if (dbType === "mysql") {{
+              const r = data.result;
+              runStatus.textContent = `MySQL 完成：scanned=${{r.scanned}}, analyzed=${{r.analyzed}}, skipped=${{r.skipped}}, failed=${{r.failed}}`;
+            }} else {{
+              const c = data.collect_result;
+              const a = data.analyze_result;
+              runStatus.textContent = `MongoDB 完成：collect=${{c.scanned}}/${{c.inserted}}，analyze scanned=${{a.scanned}}, analyzed=${{a.analyzed}}, skipped=${{a.skipped}}, failed=${{a.failed}}`;
+            }}
+
             setTimeout(() => window.location.reload(), 1200);
           }} catch (err) {{
             runStatus.textContent = "执行失败：" + err.message;
           }} finally {{
-            runBtn.disabled = false;
+            runMysqlBtn.disabled = false;
+            runMongoBtn.disabled = false;
           }}
-        }});
+        }}
+
+        runMysqlBtn.addEventListener("click", () => runJob("mysql"));
+        runMongoBtn.addEventListener("click", () => runJob("mongodb"));
       </script>
     </body>
     </html>
