@@ -286,13 +286,13 @@ class ClickHouseRepo:
             any(sort_json) AS sort_json,
             any(projection_json) AS projection_json,
             any(pipeline_json) AS pipeline_json,
-            max(ts) AS ts,
+            max(ts) AS latest_ts,
             any(raw_profile_json) AS raw_profile_json
         FROM {settings.clickhouse_db}.mongo_profile_events
         WHERE ts >= now() - INTERVAL {days} DAY
         GROUP BY
             db_name, collection_name, namespace, operation_type, query_hash, fingerprint
-        ORDER BY sum(millis) DESC
+        ORDER BY millis DESC
         LIMIT {limit}
         """
         rows = self.client.query(sql).result_rows
@@ -319,7 +319,6 @@ class ClickHouseRepo:
             )
             for row in rows
         ]
-
     # ----------------------------
     # MongoDB analysis table
     # ----------------------------
