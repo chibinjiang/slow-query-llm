@@ -6,8 +6,9 @@ from service.mongo_collector import MongoProfileCollectorService
 
 def main():
     mongo_collector = MongoProfileCollectorService()
-    # while True:
-    mongo_collector.run_once()
+    while True:
+        mongo_collector.run_once()
+        time.sleep(60)
 
 
 if __name__ == '__main__':

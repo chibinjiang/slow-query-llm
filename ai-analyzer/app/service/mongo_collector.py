@@ -28,7 +28,7 @@ class MongoProfileCollectorService:
 
         self.mongo_repo.ping()
         candidates, newest_ts = self.mongo_repo.collect_profile_candidates()
-
+        logger.info(f"Candidates count: {len(candidates)}; Newest Ts: {newest_ts}", )
         if not candidates:
             logger.info("mongo collector no new events")
             return {"scanned": 0, "inserted": 0}
