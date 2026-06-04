@@ -1,6 +1,7 @@
 """
 采集Mongodb 慢查询
 """
+import time
 from service.mongo_collector import MongoProfileCollectorService
 
 
